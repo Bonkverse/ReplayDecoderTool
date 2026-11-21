@@ -163,6 +163,11 @@
   .rt-line.good .ic{color:var(--teal)} .rt-line.bad .ic{color:var(--coral)} .rt-line.warn .ic{color:var(--amber)}
   .rt-line.good{color:var(--ink)} .rt-line.bad{color:#FFB4B4} .rt-line.warn{color:#FFE0A8}
 
+  .verdict{font-weight:600;font-size:.92rem;padding:10px 13px;border-radius:10px;border:1px solid;margin-bottom:10px}
+  .verdict.good{color:var(--teal);border-color:rgba(34,211,189,.35);background:rgba(34,211,189,.07)}
+  .verdict.warn{color:var(--amber);border-color:rgba(255,193,94,.35);background:rgba(255,193,94,.07)}
+  .verdict.bad{color:var(--coral);border-color:rgba(255,107,107,.35);background:rgba(255,107,107,.07)}
+
   /* Pipeline */
   .pipe{display:flex;align-items:stretch;gap:0;flex-wrap:wrap}
   .stage{flex:1 1 120px;min-width:120px;position:relative;border:1px solid var(--line);border-radius:11px;
@@ -315,7 +320,7 @@
   <div data-pane="encode" hidden>
     <section class="panel">
       <p class="eyebrow">Replay object (JSON)</p>
-      <p class="hint">Paste a decoded replay, or decode one first and press <b>Encode it back</b>. You can edit the JSON before encoding, e.g. rename a player.</p>
+      <p class="hint">Paste a decoded replay, or decode one first and press <b>Encode it back</b>. You can edit the JSON before encoding, e.g. rename a player. After encoding, you'll see whether bonk.io's game would play it.</p>
       <textarea id="encInput" class="tall" spellcheck="false"
         placeholder='{ "playerArray": [...], "startingState": {...}, "inputs": "...", "gameSettings": {...}, "es": 1234, ... }'></textarea>
       <div class="controls">
@@ -337,6 +342,7 @@
       </div>
       <textarea id="encOutput" readonly spellcheck="false"></textarea>
       <div class="rt" id="roundTrip"></div>
+      <div id="checks"></div>
     </section>
   </div>
 
@@ -404,6 +410,15 @@ replaydata  ← what the bonk.io API hands out</div>
         <li><b>Case flip</b> is a small bonk.io quirk. It isn't encryption. It just means a string won't decompress unless you flip it back first.</li>
       </ol>
 
+      <h2>Why flip the first 101 characters?</h2>
+      <p>bonk.io never says, so this is our best reading of its code.</p>
+      <ul>
+        <li><b>It's a speed bump, not security.</b> Without the flip, anyone could paste a replay into the popular LZString library and read it. With the flip, LZString doesn't even give an error; it quietly returns junk (one random character, on our sample). So it looks like the data isn't LZString at all. There's no key, so once you know the trick it's one line to undo.</li>
+        <li><b>Only the start, because that's enough.</b> LZString's output is one long chain where each piece depends on the ones before it. Break the start and everything after breaks. We tested it: just 10 wrong characters ruin the whole replay.</li>
+        <li><b>101, not 100,</b> because bonk's loop says <code>i &lt;= 100</code>, which counts index 0 through 100. It was very likely meant to be 100. It doesn't matter, as long as encoding and decoding use the same number.</li>
+        <li><b>Not just replays.</b> bonk.io packs the game state sent at the start of a game, and the state players swap to fix a desync, the exact same way.</li>
+      </ul>
+
       <h2>The inputs inside the inputs</h2>
       <p>After decoding, <code>inputs</code> is still a base64 string. Unpacked, it's a list of 7-byte records: player slot (2 bytes), step (4 bytes), and the keys (1 byte). The keys byte uses one bit per key: left = 1, right = 2, up = 4, down = 8, heavy = 16, special = 32. So <code>5</code> means left + up held. The Decode tab shows the first few of these in the <b>Inputs</b> table.</p>
 
@@ -418,6 +433,24 @@ someone presses Report  ──► replay_report.php</div>
       <p><b><code>replay_get.php</code> — list replays.</b> What the main menu plays in the background, and what our scraper reads. Sends <code>version</code>, <code>offset</code> (how many to skip), and optionally <code>startingFrom</code> (a replay id to count from) and <code>mode</code> (only that mode). Returns <code>{ r: "success", replays: [{ id, replaydata, mapid }, …] }</code>, newest first. The game makes its first call with <code>offset=0</code>, remembers the first replay's id as <code>startingFrom</code>, then keeps that id and raises <code>offset</code> by however many replays came back. Counting from a fixed id means new replays don't shift the pages. An empty list means there are no more.</p>
 
       <p><b><code>replay_report.php</code> — report a replay.</b> The flag button on the menu replay. Sends just <code>replayid</code>. The game doesn't read the response; it drops the replay from your list and plays the next one.</p>
+
+      <h2>Artificial replays</h2>
+      <p>An <b>artificial replay</b> is one that wasn't made by pressing Record in a real game: a program built it, or someone decoded a real one and changed it. To bonk.io it looks the same as any other replay. The Encode tab is a way to make one.</p>
+      <p>Since a replay is a recipe, you control the <b>starting state</b>, <b>who's there</b>, and <b>which keys are pressed when</b>. You don't control what happens next: positions, hits and goals all come out of the physics. To make someone jump at 2 seconds, you add an "up" press at step 60. The easy way to make one: decode a real replay on the map you want, change <code>inputs</code> or <code>es</code>, encode, and read the checks the Encode tab shows.</p>
+
+      <p><b>bonk.io's menu skips a replay if:</b></p>
+      <ul>
+        <li>it doesn't decode (wrong case flip, LZString, base64, or PSON word list);</li>
+        <li>the map scale <code>startingState.physics.ppm</code> is outside <b>5–30</b>;</li>
+        <li>any player name isn't text, or is over <b>25 characters</b>;</li>
+        <li>there are more than <b>8 players</b>;</li>
+        <li>a needed part is missing: <code>startingState</code> (with <code>physics</code>, <code>discs</code>, <code>players</code>), <code>playerArray</code>, <code>inputs</code>, <code>adminInputs</code> (can be <code>[]</code>), <code>gameSettings</code>;</li>
+        <li>the physics crashes while playing, or the screen shake goes over 500.</li>
+      </ul>
+      <p><b>It plays, but bonk.io quietly changes:</b> map name or author 30+ characters → "Unknown"; a skin with more than 16 layers → plain ball; skin values out of range (shape id outside 1–115, scale outside ±10, and so on) → reset to defaults; a non-number <code>mid</code> → ignored.</p>
+      <p><b>Hard limits of the format:</b> at most 65,535 key changes (the count is a 2-byte number), and only 6 keys (left, right, up, down, heavy, special). Key presses for an empty slot, or after <code>es</code>, simply never happen. With no <code>es</code>, the replay runs until someone wins the round.</p>
+      <p><b>What we don't know:</b> everything above is checked by the game in the browser. bonk.io's server may have its own rules for <code>replay_submit.php</code> (a size limit, a 15-second cap, checking <code>version</code> or <code>mapid</code>, rate limits), and its code isn't public. This tool never sends anything to bonk.io.</p>
+      <p><b>Before submitting one:</b> submitted replays show up in every player's main menu as if they really happened. Test locally first, and think about whether it belongs there.</p>
 
       <h2>How Bonkverse stores replays</h2>
       <p>The scraper decodes each replay down to the PSON bytes, gzips them, and stores those in Postgres. That's 40–60% smaller than the original string, and since every step is reversible, the original string can be rebuilt any time with the encoder.</p>
@@ -740,8 +773,8 @@ async function encode(){
         ? `<div class="rt-line good"><span class="ic">✓</span><span>Identical to the original string from bonk.io, character for character.</span></div>`
         : `<div class="rt-line warn"><span class="ic">≠</span><span>Different from the original string. Expected if you edited the JSON; otherwise the original was packed slightly differently.</span></div>`);
     }
-    (data.warnings||[]).forEach(w=>lines.push(`<div class="rt-line warn"><span class="ic">!</span><span>${escapeHtml(w)}</span></div>`));
     $("#roundTrip").innerHTML = lines.join("");
+    renderChecks(data.checks||[], data.verdict);
 
     const st=data.stats;
     fillPipe({object:fmt(st.topKeys),pson:fmt(st.psonBytes),base64:fmt(st.base64Chars),lz:fmt(st.compressedChars),flip:fmt(st.encodedChars)},
@@ -750,6 +783,24 @@ async function encode(){
     $("#encResultPanel").scrollIntoView({behavior:"smooth",block:"nearest"});
   }catch(err){ banner("err","Couldn't reach the encoder: "+escapeHtml(err.message)); }
   finally{ btn.disabled=false; btn.textContent="Encode"; }
+}
+
+// ── bonk.io playback checks ──
+const VERDICT = {
+  ok:   "bonk.io's game would play this replay.",
+  warn: "bonk.io's game would play this, but changes or ignores some of it.",
+  fail: "bonk.io's main menu would skip this replay.",
+};
+function renderChecks(checks, v){
+  const icon = {ok:"✓", warn:"!", fail:"✗"}, cls = {ok:"good", warn:"warn", fail:"bad"};
+  // Problems first, passes last.
+  const order = {fail:0, warn:1, ok:2};
+  const rows = checks.slice().sort((a,b)=>order[a.level]-order[b.level]).map(c=>
+    `<div class="rt-line ${cls[c.level]}"><span class="ic">${icon[c.level]}</span><span><b>${escapeHtml(c.title)}</b>${c.detail?` — ${escapeHtml(c.detail)}`:""}</span></div>`).join("");
+  $("#checks").innerHTML = `<p class="eyebrow" style="margin-top:18px">Would bonk.io play this?</p>
+    <div class="verdict ${cls[v]||"warn"}">${escapeHtml(VERDICT[v]||"")}</div>
+    <p class="hint">These are the same checks bonk.io's game runs on a replay. The server may have its own rules we can't see, and the physics isn't run here. See the <b>How replays work</b> tab.</p>
+    <div class="rt">${rows}</div>`;
 }
 
 // ── Fetch latest ──

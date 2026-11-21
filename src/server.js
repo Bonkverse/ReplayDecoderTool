@@ -365,6 +365,7 @@
 //                          + a preview of the data after every step
 //   POST /api/encode     → { replay }     → replaydata string (the exact reverse
 //                          of /api/decode) + step previews + a round-trip check
+//                          + bonk.io's own playback checks (src/replay-checks.js)
 //   GET  /api/latest     → newest replays from bonk.io (offset=0, no anchor)
 //   GET  /api/fetch?startingFrom=N
 //                        → best-effort: anchors pagination at replay id N.
@@ -386,6 +387,7 @@ import { config }                         from "../config.js";
 import { traceDecode, traceEncode,
          compressForStorage,
          unpackInputs, describeKeys }     from "./codec.js";
+import { checkReplay, verdict }        from "./replay-checks.js";
 import { fetchReplays }                   from "./api.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -459,10 +461,6 @@ function summarizeInputs(decoded) {
         })),
     };
 }
-
-// Keys bonk.io puts on every replay. Missing ones still encode fine, but the
-// game (and our renderer) won't be able to play the result.
-const EXPECTED_KEYS = ["playerArray", "startingState", "inputs", "gameSettings", "es"];
 
 function extractPlayers(decoded) {
     const scores = decoded?.startingState?.scores;
@@ -571,10 +569,8 @@ async function handleEncode(req, res) {
             roundTrip = { ok: false, error: err.message };
         }
 
-        const missing = EXPECTED_KEYS.filter((k) => !(k in replay));
-        const warnings = missing.length
-            ? [`This replay has no ${missing.join(", ")}. It encodes fine, but bonk.io and the renderer won't be able to play it.`]
-            : [];
+        // The same checks bonk.io's game runs before playing a replay.
+        const checks = checkReplay(replay);
 
         return sendJson(res, 200, {
             ok: true,
@@ -593,7 +589,8 @@ async function handleEncode(req, res) {
                 output:     textPreview(replaydata),
             },
             roundTrip,
-            warnings,
+            checks,
+            verdict: verdict(checks),
         });
     } catch (err) {
         return sendJson(res, 422, {
