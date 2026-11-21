@@ -360,7 +360,7 @@
       <p class="eyebrow">How replays work</p>
 
       <h2>What is a replay?</h2>
-      <p>A bonk.io replay is <b>not a video</b>. It's a recipe for re-running one round: the map and starting positions, who was playing, the room settings, and a list of every key each player pressed and when. bonk.io's physics is deterministic, so if you start from the same state and feed in the same keys at the same steps, you get the exact same game every time.</p>
+      <p>A bonk.io replay is <b>not a video</b>. It's a recipe for re-running a short clip of a round (15 seconds at most): the map and starting positions, who was playing, the room settings, and a list of every key each player pressed and when. bonk.io's physics is deterministic, so if you start from the same state and feed in the same keys at the same steps, you get the exact same game every time.</p>
       <p>The physics runs at <b>30 steps per second</b>. "Step" (or "frame") just means one tick of that clock.</p>
 
       <h2>What's inside one</h2>
@@ -406,6 +406,18 @@ replaydata  ← what the bonk.io API hands out</div>
 
       <h2>The inputs inside the inputs</h2>
       <p>After decoding, <code>inputs</code> is still a base64 string. Unpacked, it's a list of 7-byte records: player slot (2 bytes), step (4 bytes), and the keys (1 byte). The keys byte uses one bit per key: left = 1, right = 2, up = 4, down = 8, heavy = 16, special = 32. So <code>5</code> means left + up held. The Decode tab shows the first few of these in the <b>Inputs</b> table.</p>
+
+      <h2>The replay endpoints</h2>
+      <p>bonk.io has three. All are <code>POST</code> requests to <code>https://bonk2.io/scripts/…</code> with a normal form body. This is what the game itself sends.</p>
+      <div class="flow">someone presses Record ──► replay_submit.php ──► saved, gets an id
+main menu               ◄── replay_get.php    ◄── newest replays
+someone presses Report  ──► replay_report.php</div>
+
+      <p><b><code>replay_submit.php</code> — save a replay.</b> Sends <code>version</code> (game version, 49 as of July 2026), <code>replaydata</code> (the encoded string, exactly what the Encode tab makes), <code>mapid</code> (the map's id), and <code>mode</code> (e.g. <code>ar</code>). It isn't sent at the end of every round. Any player can press the replay button at the top of the game; the room server tells everyone, and <b>only the host's game</b> uploads it. It records the last 15 seconds, or back to the start of the round if that's sooner. It's refused in Football, within 15 seconds of the last replay, or if there's under 5 seconds to record. The game doesn't read the response.</p>
+
+      <p><b><code>replay_get.php</code> — list replays.</b> What the main menu plays in the background, and what our scraper reads. Sends <code>version</code>, <code>offset</code> (how many to skip), and optionally <code>startingFrom</code> (a replay id to count from) and <code>mode</code> (only that mode). Returns <code>{ r: "success", replays: [{ id, replaydata, mapid }, …] }</code>, newest first. The game makes its first call with <code>offset=0</code>, remembers the first replay's id as <code>startingFrom</code>, then keeps that id and raises <code>offset</code> by however many replays came back. Counting from a fixed id means new replays don't shift the pages. An empty list means there are no more.</p>
+
+      <p><b><code>replay_report.php</code> — report a replay.</b> The flag button on the menu replay. Sends just <code>replayid</code>. The game doesn't read the response; it drops the replay from your list and plays the next one.</p>
 
       <h2>How Bonkverse stores replays</h2>
       <p>The scraper decodes each replay down to the PSON bytes, gzips them, and stores those in Postgres. That's 40–60% smaller than the original string, and since every step is reversible, the original string can be rebuilt any time with the encoder.</p>

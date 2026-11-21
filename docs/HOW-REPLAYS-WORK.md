@@ -16,6 +16,8 @@ A replay doesn't store any pictures. It stores:
 
 1. **Where everything started** — the map, every player's position and speed,
    the scores, and the random seed.
+   (A replay is a clip of **at most 15 seconds**, not a whole round. See
+   [section 7](#7-the-replay-endpoints).)
 2. **Who was there** — names, levels, teams, skins.
 3. **Every key change** — "player 0 pressed left at step 45", "player 0 let go
    of left at step 77", and so on.
@@ -23,7 +25,7 @@ A replay doesn't store any pictures. It stores:
 bonk.io's physics is **deterministic**: same start + same keys at the same
 steps = the exact same game, every time. So to watch a replay, bonk.io (or our
 ReplayRenderer) loads the starting state and re-runs the physics, feeding in
-the recorded keys. That's why a whole round fits in a few KB.
+the recorded keys. That's why a replay fits in a few KB.
 
 The physics runs at **30 steps per second**. "Step" and "frame" mean the same
 thing here: one tick of that clock. A replay with `es: 450` lasts 15 seconds.
@@ -124,6 +126,10 @@ are. Flipping twice gives back the original, so the same function
 
 ## 4. Decoding and encoding
 
+This is the same code as bonk.io's own `Map.toDatabase()` (encode) and
+`Map.fromDatabase()` (decode): the same four steps, the same word list, and the
+same `i <= 100` flip loop.
+
 Every step above can be undone exactly, so:
 
 - **Decoding** = steps 4 → 1 in reverse: flip case, LZString-decompress,
@@ -193,7 +199,131 @@ is lost.
 Replay ids are not unique forever: when bonk.io wipes replays, ids start over
 in a new **cycle**. The real key is `(cycle, id)`. See `config.js`.
 
-## 7. Where the code lives
+## 7. The replay endpoints
+
+bonk.io has three replay endpoints. All three are plain `POST` requests to
+`https://bonk2.io/scripts/…` with a form-encoded body
+(`application/x-www-form-urlencoded`), the same as a normal HTML form.
+Everything below comes from reading bonk.io's own client code (the build in
+ReplayRenderer's `vendor/bonk-core.mjs`), so it's what the game actually sends.
+
+Here's how a replay moves through them:
+
+```
+in a game                         bonk.io server                  main menu
+──────────                        ──────────────                  ─────────
+someone presses Record
+  → host's game packs the
+    last ≤15 s into replaydata
+  → replay_submit.php  ────────►  stores it, gives it an id
+                                  replay_get.php  ◄──────────────  menu asks for replays
+                                  (newest first)  ──────────────►  plays them in the background
+                                  replay_report.php ◄────────────  someone presses Report
+```
+
+### `replay_submit.php` — save a replay
+
+**Body**
+
+| Field | Type | What it is |
+|-------|------|------------|
+| `version` | number | Game/API version (`game.version`; 49 as of July 2026). |
+| `replaydata` | string | The encoded replay. Exactly what `encodeReplayData` makes. |
+| `mapid` | number | The map's database id (`gameSettings.map.m.dbid`). |
+| `mode` | string | Mode short code (`gameSettings.mo`, e.g. `ar`). Sent by the Record button. |
+
+The game doesn't read the response. It sends the replay and moves on.
+
+**When it's sent.** Not automatically at the end of every round. It goes like this:
+
+1. Any player in the room clicks the replay (record) button at the top of the
+   game screen.
+2. Their game sends a "record" message (socket packet 33) to the room server,
+   which passes it to everyone in the room.
+3. Every game checks the rules below, but **only the host's game actually
+   calls `replay_submit.php`**. Everyone else just sees the chat message.
+
+The rules (with the chat message each one shows the player who asked):
+
+| Rule | Message |
+|------|---------|
+| Not in Football (the game engine `gameSettings.ga` must be `b`) | `* No replays in Football mode` |
+| At least 15 s since the last replay in this room | `* Please wait at least 15 seconds since the last replay` |
+| At least 5 s of play to record | `* Replay must be at least 5 seconds long` |
+| On success | `* The last 15 seconds have been recorded to the main menu` |
+
+**What gets recorded.** The game walks back from the current step until it
+finds the start of the round or hits 15 seconds (450 steps), whichever comes
+first. That step becomes `startingState`. It then fills in:
+
+- `inputs` — each player's key state at that start step, plus every change
+  after it, with steps shifted so the replay starts at 0.
+- `playerArray` — the players in those slots. A player who already left
+  becomes `{ userName: "unknown" }` with an empty skin.
+- `adminInputs`, `gameSettings` (with the map removed, because it's already
+  inside `startingState.physics`), `mn`, `ma`, `es` (the length in steps), and
+  `mid` (only for maps saved in bonk's current map format, `dbv == 2`).
+
+So every replay is **15 seconds at most**, and usually exactly 450 steps.
+
+> There's also an older "send the replay automatically at the end of each
+> round" path in the code (it records up to 59 s), but the switch that turns
+> it on is never set in the current game, so it never runs.
+
+### `replay_get.php` — list replays
+
+This is what fills the main menu's background replays, and what our scraper
+calls (`src/api.js`).
+
+**Body**
+
+| Field | Type | What it is |
+|-------|------|------------|
+| `version` | number | Game/API version, same as above. |
+| `offset` | number | How many replays to skip. Start at `0`; after each reply, add the number of replays you got back. |
+| `startingFrom` | number | *Optional.* A replay id to count from. See below. |
+| `mode` | string | *Optional.* Only replays of this mode. The menu sends it only when the player has turned the mode filter on. |
+
+**Response** (JSON)
+
+| Field | Type | What it is |
+|-------|------|------------|
+| `r` | string | `"success"`, or `"fail"` (we see `"fail"` when rate-limited). |
+| `replays` | array | Newest first. Each item has `id` (number), `replaydata` (string), and `mapid`. An empty array means there are no more. |
+
+**How paging works.** New replays arrive all the time, so "skip the first 20"
+would shift under you. The game avoids that like this:
+
+1. First call: `offset=0`, no `startingFrom`. Newest replays come back.
+2. It remembers the **first** replay's id as `startingFrom`.
+3. Every later call sends that same `startingFrom` with a bigger `offset`.
+   Counting from a fixed id means new replays don't push things around.
+4. If you leave the menu for more than 2 minutes, it forgets `startingFrom`
+   and starts over from the newest.
+
+The page size isn't fixed by the client. Always use `replays.length`.
+
+**What the menu throws away.** After decoding, the game silently skips any
+replay that looks broken or hostile: map scale (`physics.ppm`) outside 5–30,
+a username longer than 25 characters, or more than 8 players. While playing
+one, it also skips it if the screen shake gets huge (over 500). Worth doing
+the same checks anywhere we display replays.
+
+### `replay_report.php` — report a replay
+
+The flag button on the menu's background replay.
+
+**Body**
+
+| Field | Type | What it is |
+|-------|------|------------|
+| `replayid` | number | The `id` from `replay_get.php`. |
+
+The game doesn't read the response either. It removes the replay from the
+player's own list right away and plays the next one. What the server does with
+reports (hide after N reports? moderation queue?) isn't visible from the client.
+
+## 8. Where the code lives
 
 | File | What it does |
 |------|--------------|
@@ -204,7 +334,7 @@ in a new **cycle**. The real key is `(cycle, id)`. See `config.js`.
 | `src/scraper.js`, `src/db.js` | The 24/7 scraper and its Postgres storage. |
 | `test/` | Round-trip tests on a real replay. Run `npm test`. |
 
-## 8. Gotchas
+## 9. Gotchas
 
 - **101, not 100.** The flip covers indexes 0–100 inclusive. Old code wrote
   this as `i <= 100`, which is easy to misread.
@@ -213,6 +343,8 @@ in a new **cycle**. The real key is `(cycle, id)`. See `config.js`.
   slots, gaps included.
 - **Hostile names.** Player and map names come straight from players. Some are
   script-injection attempts. Always escape them before putting them in HTML.
+- **Replays are short.** The Record button saves 15 seconds at most, so
+  expect `es` of 450 or less.
 - **Bad input fails at a specific step.** `traceDecode`/`traceEncode` throw
   errors with a `stage` field (`lz`, `base64`, `pson`, or `input`), and the web
   tool highlights that stage in red. A cut-off paste usually fails at `lz`.
