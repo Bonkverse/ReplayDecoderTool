@@ -4,7 +4,7 @@ A 24/7 Bonk.io replay scraper that stores decoded, compressed replays in Postgre
 
 It also ships the **Replay Decoder & Encoder** web tool: paste a bonk.io `replaydata` string to see the replay inside it, or paste a replay object to pack it back into a string, with every step shown both ways.
 
-**New to replays?** Read [docs/HOW-REPLAYS-WORK.md](docs/HOW-REPLAYS-WORK.md) first. It covers what a replay is, what's inside one, how decoding and encoding work, and bonk.io's three replay endpoints (`replay_submit.php`, `replay_get.php`, `replay_report.php`).
+**New to replays?** Read [docs/HOW-REPLAYS-WORK.md](docs/HOW-REPLAYS-WORK.md) first. It covers what a replay is, what's inside one, how decoding and encoding work, bonk.io's three replay endpoints, and artificial replays (what they are and what makes bonk.io refuse one) (`replay_submit.php`, `replay_get.php`, `replay_report.php`).
 
 ---
 

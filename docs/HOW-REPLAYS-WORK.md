@@ -119,10 +119,49 @@ characters, so it can go in a form body without escaping.
 ### Step 4 — case flip
 
 bonk.io swaps upper and lower case on the first **101** characters (indexes
-0 to 100). That's all. It isn't encryption, just a speed bump: the string
-won't decompress until you flip it back. Digits and symbols are left as they
-are. Flipping twice gives back the original, so the same function
+0 to 100). That's all. Digits and symbols (`0–9 + - $`) have no case, so they
+stay the same. Flipping twice gives back the original, so the same function
 (`flipCase`) is used in both directions.
+
+#### Why flip at all, and why 101?
+
+bonk.io's code has no comment explaining it, so this part is our best reading
+of the code, not something bonk has said.
+
+**What it's for: a speed bump, not security.** LZString is a popular library.
+Without the flip, anyone who recognised the format could paste a replay into
+`LZString.decompressFromEncodedURIComponent` and read it. With the flip, that
+doesn't throw an error; it quietly returns junk. On our sample replay it
+returns one random character (`䆬`). So the data looks like it isn't LZString
+at all, and you have to know the trick to get in. It's not encryption: there
+is no key, and once you know about it, undoing it is one line.
+
+**Why the start of the string?** LZString writes one long stream of bits,
+and every later piece depends on the pieces before it. Breaking the start
+breaks everything after it. We tested this: flipping just the first **10**
+characters back the wrong way is already enough to turn the whole replay into
+junk. So bonk only needs to touch the beginning, and it's cheap.
+
+**Why 101 and not 100?** The loop is written `for (i = 0; …) if (i <= 100 …)`.
+`<= 100` includes index 100, which makes 101 characters. That's almost
+certainly meant to be "the first 100" with an off-by-one. It doesn't matter
+which: any number above about 10 breaks the decompress. It matters only that
+encode and decode use the same number, which is why ours is `i <= 100` too
+(`FLIP_LENGTH = 101` in `src/codec.js`).
+
+**It's not only replays.** bonk.io uses the same pack-and-flip (PSON → base64 →
+LZString → flip the first 101) in three places in its code:
+
+1. replays (`Map.toDatabase` / `Map.fromDatabase`);
+2. the game state sent to everyone when a game starts;
+3. the game state players send each other to fix a desync.
+
+So the decoder in this repo can read those messages too.
+
+**A side effect: every replay starts the same way.** Every replay object begins
+with the key `playerArray`, so the first characters of every `replaydata` are
+nearly identical (ours all start `jWCW…`). The flip doesn't hide that; it
+just changes which letters you see.
 
 ## 4. Decoding and encoding
 
@@ -323,21 +362,129 @@ The game doesn't read the response either. It removes the replay from the
 player's own list right away and plays the next one. What the server does with
 reports (hide after N reports? moderation queue?) isn't visible from the client.
 
-## 8. Where the code lives
+## 8. Artificial replays
+
+An **artificial replay** is one that wasn't made by pressing Record in a real
+game. A program built it, or someone decoded a real replay and changed it.
+To bonk.io it looks exactly like any other replay: the same object, packed the
+same way. The tool's Encode tab is a way to make one.
+
+### How they work
+
+Remember that a replay is a **recipe**: a starting state plus key presses,
+re-run through bonk's physics (section 1). So in an artificial replay you
+control:
+
+- the **starting state**: the map, where every player starts, their speed, the scores;
+- **who's there**: names, levels, skins;
+- **what keys are pressed, and when**.
+
+You do **not** control what happens after step 0 directly. Positions, hits,
+deaths and goals all come out of the physics. To make a player jump at 2
+seconds, you add an "up" key press at step 60; you can't just write "player is
+in the air at step 60".
+
+Some things people use this for:
+
+| Change | How |
+|--------|-----|
+| Fix a typo in the map credit | Edit `mn` / `ma`. Nothing else changes. |
+| Trim a replay | Lower `es`. Key presses after it never happen. |
+| Swap a skin or name | Edit `playerArray`. The game doesn't change, only the look. |
+| Script a bot or test a trick | Write new `inputs` with `packInputs` (section 5). |
+| Build one from scratch | Hard: `startingState` is a full physics world. Start from a real replay on the same map and change it. |
+
+The practical recipe: decode a real replay on the map you want → change
+`inputs` (and `es`) → encode → read the checks the Encode tab shows → play it
+locally in ReplayRenderer to see it actually runs.
+
+### What makes bonk.io refuse or change a replay
+
+These come from bonk.io's game code, the part that loads replays into the main
+menu. The Encode tab runs all of them for you (`src/replay-checks.js`).
+
+**The menu skips the replay** (it never plays):
+
+| Rule | Where it's checked |
+|------|--------------------|
+| Must decode: correct case flip, LZString, base64, PSON with bonk's exact word list | `Map.fromDatabase` |
+| `startingState.physics.ppm` (map scale) between **5 and 30** | menu, after fetching |
+| Every player's `userName` is text, **25 characters or fewer** | menu, after fetching |
+| **8 players or fewer** (non-empty `startingState.discs`) | menu, after fetching |
+| Has `startingState` (with `physics`, `discs`, `players`), `playerArray`, `inputs`, `adminInputs` (an array, even if empty), `gameSettings` | the game errors without them, and errors mean "skip" |
+| Physics must not crash while playing, and the screen shake must stay under 500 | during playback |
+
+**The game quietly changes it** (it still plays):
+
+| Value | Rule | What bonk does |
+|-------|------|----------------|
+| `mn`, `ma` | text under 30 characters | shows "Unknown" |
+| `rxn`, `rxa` | text under 30 characters | shows nothing |
+| `mid` | a number | ignores it |
+| skin `layers` | 16 or fewer | throws all layers away (plain ball) |
+| layer `id` | 1–115 | becomes shape 1 |
+| layer `x`, `y` | −99,999 to 99,999 | becomes 0 |
+| layer `scale` | −10 to 10 | becomes 0.25 |
+| layer `angle` | −9,999 to 9,999 | becomes 0 |
+| `bc`, layer `color` | 0 to 16,777,215 (0xFFFFFF) | reset to a default |
+| `startingState.rc` | — | always overwritten by the menu's own round counter |
+
+**Hard limits of the format** (you physically can't go past them):
+
+| Thing | Limit | Why |
+|-------|-------|-----|
+| Key changes in one replay | 65,535 | the count is a 2-byte number |
+| Player slot in `inputs` | 65,535 | 2-byte number, but only slots 0–7 can have a player |
+| Step of a key change | about 4.29 billion | 4-byte number |
+| Keys | left, right, up, down, heavy, special | only 6 bits are read; higher bits are ignored |
+
+**Things that won't break it but do nothing:**
+
+- Key presses for a slot with no player.
+- Key presses after `es`. The replay ends at `es`, or when the round's end
+  countdown (`fte`, 90 steps after someone wins) runs out, whichever is first.
+- No `es` at all: the menu plays until the round ends by itself. If nobody
+  ever wins, that could be never.
+
+### What we don't know: the server
+
+Everything above is the **client**, the game in your browser. When you send a
+replay to `replay_submit.php`, bonk.io's **server** may check things too, and
+its code isn't public. Open questions:
+
+- Is there a size limit on `replaydata`?
+- Does it reject replays longer than 15 seconds, since the Record button never makes them?
+- Does it check `version`? Does `mapid` have to match the map inside?
+- Does it decode the replay at all, or just store the string?
+- Rate limits, duplicate detection, what happens after N reports?
+
+We haven't tested any of these, and the tool doesn't send anything to bonk.io.
+
+### Before you submit one
+
+Anything sent to `replay_submit.php` goes into the **public** feed that every
+bonk.io player sees on the main menu. An artificial replay there is shown to
+real players as if it really happened, under real-looking names. Test locally
+(the Encode tab's checks, then ReplayRenderer), and think about whether it
+belongs in everyone's menu before sending it.
+
+## 9. Where the code lives
 
 | File | What it does |
 |------|--------------|
 | `src/codec.js` | The whole format: `flipCase`, decode, encode, inputs pack/unpack, gzip for storage. Start here. |
+| `src/replay-checks.js` | bonk.io's own "will this play?" rules, used by the Encode tab. |
 | `src/server.js` | Web tool backend: `POST /api/decode`, `POST /api/encode`, `GET /api/latest`, `GET /api/fetch`. |
 | `public/index.html` | Web tool page: Decode, Encode, and How replays work tabs. |
 | `src/api.js` | Talks to the bonk.io replay API. |
 | `src/scraper.js`, `src/db.js` | The 24/7 scraper and its Postgres storage. |
 | `test/` | Round-trip tests on a real replay. Run `npm test`. |
 
-## 9. Gotchas
+## 10. Gotchas
 
-- **101, not 100.** The flip covers indexes 0–100 inclusive. Old code wrote
-  this as `i <= 100`, which is easy to misread.
+- **101, not 100.** The flip covers indexes 0–100 inclusive (bonk writes it
+  as `i <= 100`). Use the same number both ways or nothing decodes. See
+  [why it's there](#why-flip-at-all-and-why-101).
 - **Dictionary order.** See step 1. Never "clean up" the duplicate entries.
 - **Null slots.** `playerArray` has `null` gaps. Ids in `inputs` refer to
   slots, gaps included.

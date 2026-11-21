@@ -33,15 +33,15 @@ test("decode → encode gives back the same string", async () => {
     assert.equal(enc.status, 200);
     assert.equal(enc.body.replaydata, replaydata);
     assert.equal(enc.body.roundTrip.ok, true);
-    assert.deepEqual(enc.body.warnings, []);
+    assert.equal(enc.body.verdict, "ok");
     assert.equal(enc.body.steps.base64.head, dec.body.steps.base64.head);
 });
 
-test("encode warns about a replay missing the parts bonk needs", async () => {
+test("encode still works on a replay bonk can't play, but says so", async () => {
     const enc = await post("/api/encode", { replay: { hello: "world" } });
     assert.equal(enc.status, 200);
     assert.equal(enc.body.roundTrip.ok, true);
-    assert.equal(enc.body.warnings.length, 1);
+    assert.equal(enc.body.verdict, "fail");
 });
 
 test("encode rejects things that aren't an object", async () => {
