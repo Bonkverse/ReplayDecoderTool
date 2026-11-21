@@ -2,6 +2,10 @@
 
 A 24/7 Bonk.io replay scraper that stores decoded, compressed replays in Postgres. Built for Railway deployment.
 
+It also ships the **Replay Decoder & Encoder** web tool: paste a bonk.io `replaydata` string to see the replay inside it, or paste a replay object to pack it back into a string, with every step shown both ways.
+
+**New to replays?** Read [docs/HOW-REPLAYS-WORK.md](docs/HOW-REPLAYS-WORK.md) first. It covers what a replay is, what's inside one, how decoding and encoding work, and bonk.io's three replay endpoints (`replay_submit.php`, `replay_get.php`, `replay_report.php`).
+
 ---
 
 ## Architecture
@@ -95,6 +99,32 @@ Railway's log viewer will show lines like:
 
 ---
 
+## Replay Decoder & Encoder (web tool)
+
+```bash
+npm install
+npm run decoder        # http://localhost:3000  (PORT to change)
+```
+
+| Route | What it does |
+|-------|--------------|
+| `POST /api/decode` | `{ replaydata }` → decoded replay, players, inputs summary, and a preview of the data after each step |
+| `POST /api/encode` | `{ replay }` → `replaydata` string, step previews, and a round-trip check (decodes the result again and compares) |
+| `GET /api/latest` | Newest replays from bonk.io |
+| `GET /api/fetch?startingFrom=N` | Replays anchored around id N (best effort) |
+
+Encoding is the exact reverse of decoding: encoding a replay you just decoded gives back the identical string.
+
+## Tests
+
+```bash
+npm test
+```
+
+Round-trip tests run against one real replay in `test/fixtures/sample-replay.pson.gz` (stored the same way the scraper stores replays). No database or network needed.
+
+---
+
 ## Local development
 
 ```bash
@@ -152,8 +182,14 @@ src/
   index.js     Entry point, signal handlers
   scraper.js   Main loop — fetch → decode → store → advance
   api.js       bonk.io HTTP client, typed result union
-  codec.js     LZString/PSON decode + gzip compress/decompress
+  codec.js     replaydata decode + encode, inputs unpack, gzip for storage
   db.js        Postgres pool, migrations, batch upsert
+  server.js    Decoder/encoder web tool backend
+public/
+  index.html   Decoder/encoder web tool page
+docs/
+  HOW-REPLAYS-WORK.md   Start here if you're new
+test/          Round-trip tests (npm test)
 config.js      All constants and env-var reads
 railway.toml   Railway build/deploy config
 .env.example   Required environment variables

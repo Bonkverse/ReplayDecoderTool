@@ -362,6 +362,9 @@
 //
 //   GET  /               → serves public/index.html
 //   POST /api/decode     → { replaydata } → fully decoded replay + pipeline stats
+//                          + a preview of the data after every step
+//   POST /api/encode     → { replay }     → replaydata string (the exact reverse
+//                          of /api/decode) + step previews + a round-trip check
 //   GET  /api/latest     → newest replays from bonk.io (offset=0, no anchor)
 //   GET  /api/fetch?startingFrom=N
 //                        → best-effort: anchors pagination at replay id N.
@@ -379,11 +382,10 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 
-import LZString from "lz-string";
-
 import { config }                         from "../config.js";
-import { decodeReplayData,
-         compressForStorage }             from "./codec.js";
+import { traceDecode, traceEncode,
+         compressForStorage,
+         unpackInputs, describeKeys }     from "./codec.js";
 import { fetchReplays }                   from "./api.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -425,14 +427,42 @@ function readBody(req) {
     });
 }
 
-// Same first-100-char case flip codec.js uses — kept here only to measure the
-// base64 intermediate size for the pipeline view. The authoritative decode still
-// goes through decodeReplayData().
-function flip100(str) {
-    return str.split("").map((ch, i) =>
-        i <= 100 ? (ch === ch.toLowerCase() ? ch.toUpperCase() : ch.toLowerCase()) : ch
-    ).join("");
+// ─── Step previews (for the "watch it happen" view) ─────────────────────────
+//
+// Each pipeline step's output can be megabytes, so the page only gets the
+// start of it: enough to see what changed between steps.
+
+const PREVIEW_CHARS = 240;
+const PREVIEW_BYTES = 64;
+
+const textPreview = (s) => ({ length: s.length, head: s.slice(0, PREVIEW_CHARS) });
+const bytesPreview = (buf) => ({
+    length: buf.length,
+    hex:    [...buf.subarray(0, PREVIEW_BYTES)].map((b) => b.toString(16).padStart(2, "0")).join(" "),
+});
+
+// Pick out the inputs stream (the actual gameplay) in a readable form.
+const INPUT_SAMPLE = 40;
+function summarizeInputs(decoded) {
+    if (typeof decoded?.inputs !== "string") return null;
+    let events;
+    try { events = unpackInputs(decoded.inputs); } catch { return null; }
+    const names = (decoded.playerArray ?? []).map((p) => p?.userName ?? null);
+    const perPlayer = {};
+    for (const e of events) perPlayer[e.player] = (perPlayer[e.player] ?? 0) + 1;
+    return {
+        base64Chars: decoded.inputs.length,
+        total:       events.length,
+        perPlayer:   Object.entries(perPlayer).map(([id, count]) => ({ id: +id, name: names[id] ?? null, count })),
+        sample:      events.slice(0, INPUT_SAMPLE).map((e) => ({
+            ...e, name: names[e.player] ?? null, keys: describeKeys(e.bits),
+        })),
+    };
 }
+
+// Keys bonk.io puts on every replay. Missing ones still encode fine, but the
+// game (and our renderer) won't be able to play the result.
+const EXPECTED_KEYS = ["playerArray", "startingState", "inputs", "gameSettings", "es"];
 
 function extractPlayers(decoded) {
     const scores = decoded?.startingState?.scores;
@@ -484,14 +514,13 @@ async function handleDecode(req, res) {
     if (!raw) return sendJson(res, 400, { ok: false, error: "Paste an encoded replaydata string first." });
 
     try {
-        const base64 = LZString.decompressFromEncodedURIComponent(flip100(raw)); // size only
-        const { decoded, rawBuffer } = decodeReplayData(raw);                     // authoritative
+        const { result: { decoded, rawBuffer }, steps } = traceDecode(raw);
         const gz = await compressForStorage(rawBuffer);
 
         const encodedChars = raw.length;
         const stats = {
             encodedChars,
-            base64Chars: base64 ? base64.length : 0,
+            base64Chars: steps.base64.length,
             psonBytes:   rawBuffer.length,
             gzipBytes:   gz.length,
             savingsPct:  encodedChars > 0 ? Math.round((1 - gz.length / encodedChars) * 1000) / 10 : 0,
@@ -501,22 +530,78 @@ async function handleDecode(req, res) {
         return sendJson(res, 200, {
             ok: true, stats, meta: extractMeta(decoded),
             players: extractPlayers(decoded), topKeys, decoded,
+            inputs: summarizeInputs(decoded),
+            steps: {
+                input:   textPreview(raw),
+                flipped: textPreview(steps.flipped),
+                base64:  textPreview(steps.base64),
+                pson:    bytesPreview(rawBuffer),
+            },
         });
     } catch (err) {
         return sendJson(res, 422, {
             ok: false,
             error: err?.message ?? "Decode failed.",
-            stage: classifyError(err?.message ?? ""),
+            stage: err?.stage ?? "input",
         });
     }
 }
 
-function classifyError(msg) {
-    const m = msg.toLowerCase();
-    if (m.includes("lzstring") || m.includes("decompress")) return "lz";
-    if (m.includes("base64"))                                return "base64";
-    if (m.includes("pson") || m.includes("decode"))          return "pson";
-    return "input";
+// ─── Route: POST /api/encode ────────────────────────────────────────────────
+//
+// The reverse of /api/decode: replay object in, replaydata string out. After
+// encoding we decode the result again and compare, so the page can show that
+// nothing was lost on the way.
+
+async function handleEncode(req, res) {
+    let payload;
+    try { payload = JSON.parse(await readBody(req)); }
+    catch { return sendJson(res, 400, { ok: false, error: "Body must be valid JSON.", stage: "input" }); }
+
+    const replay = payload?.replay;
+    try {
+        const { replaydata, psonBuffer, base64, compressed } = traceEncode(replay);
+
+        // Round-trip check: decode what we just made and compare.
+        let roundTrip;
+        try {
+            const back = traceDecode(replaydata).result.decoded;
+            roundTrip = { ok: JSON.stringify(back) === JSON.stringify(replay) };
+        } catch (err) {
+            roundTrip = { ok: false, error: err.message };
+        }
+
+        const missing = EXPECTED_KEYS.filter((k) => !(k in replay));
+        const warnings = missing.length
+            ? [`This replay has no ${missing.join(", ")}. It encodes fine, but bonk.io and the renderer won't be able to play it.`]
+            : [];
+
+        return sendJson(res, 200, {
+            ok: true,
+            replaydata,
+            stats: {
+                topKeys:         Object.keys(replay).length,
+                psonBytes:       psonBuffer.length,
+                base64Chars:     base64.length,
+                compressedChars: compressed.length,
+                encodedChars:    replaydata.length,
+            },
+            steps: {
+                pson:       bytesPreview(psonBuffer),
+                base64:     textPreview(base64),
+                compressed: textPreview(compressed),
+                output:     textPreview(replaydata),
+            },
+            roundTrip,
+            warnings,
+        });
+    } catch (err) {
+        return sendJson(res, 422, {
+            ok: false,
+            error: err?.message ?? "Encode failed.",
+            stage: err?.stage ?? "input",
+        });
+    }
 }
 
 // ─── Route: GET /api/latest ──────────────────────────────────────────────────
@@ -619,6 +704,7 @@ export const server = http.createServer(async (req, res) => {
         if (req.method === "GET"  && url.pathname === "/")            return handleIndex(res);
         if (req.method === "GET"  && url.pathname in STATIC_FILES)    return handleStatic(res, url.pathname);
         if (req.method === "POST" && url.pathname === "/api/decode")  return handleDecode(req, res);
+        if (req.method === "POST" && url.pathname === "/api/encode")  return handleEncode(req, res);
         if (req.method === "GET"  && url.pathname === "/api/latest")  return handleLatest(res);
         if (req.method === "GET"  && url.pathname === "/api/fetch")   return handleFetch(res, url);
         sendJson(res, 404, { ok: false, error: "Not found." });
