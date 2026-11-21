@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Bonkverse · Replay Decoder</title>
+<title>Bonkverse · Replay Decoder &amp; Encoder</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -28,9 +28,10 @@
     -webkit-font-smoothing:antialiased; min-height:100vh;
   }
   .wrap{max-width:1060px;margin:0 auto;padding:34px 22px 80px}
+  code{font-family:var(--mono);font-size:.86em;color:var(--cyan)}
 
   /* Header */
-  header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:26px}
+  header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:22px}
   .brand{display:flex;align-items:center;gap:13px}
   .glyph{width:42px;height:42px;border-radius:11px;flex:0 0 auto;position:relative;
     background:linear-gradient(150deg,var(--teal),var(--teal-deep));
@@ -39,10 +40,19 @@
     background:var(--bg);box-shadow:0 0 0 3px var(--teal) inset;}
   h1{font-size:1.32rem;font-weight:700;margin:0;letter-spacing:-.01em}
   h1 .dim{color:var(--muted);font-weight:500}
-  .sub{color:var(--muted);font-size:.86rem;margin-top:3px;max-width:46ch}
+  .sub{color:var(--muted);font-size:.86rem;margin-top:3px;max-width:52ch}
   .pill{font-family:var(--mono);font-size:.7rem;letter-spacing:.02em;color:var(--cyan);
     border:1px solid var(--line-strong);border-radius:999px;padding:6px 12px;white-space:nowrap;background:var(--panel-2);}
   .pill b{color:var(--teal);font-weight:700}
+
+  /* Tabs */
+  .tabs{display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--line);padding-bottom:0}
+  .tab{background:transparent;color:var(--muted);border:0;border-bottom:2px solid transparent;border-radius:0;
+    padding:10px 14px;margin-bottom:-1px;font-size:.92rem}
+  .tab:hover{color:var(--ink)}
+  .tab[aria-selected="true"]{color:var(--teal);border-bottom-color:var(--teal)}
+  .tab .arrow{font-family:var(--mono);font-size:.74rem;color:var(--muted);margin-left:6px}
+  [data-pane][hidden]{display:none}
 
   /* Panels */
   .panel{background:linear-gradient(180deg,var(--panel),var(--panel-2));
@@ -50,11 +60,14 @@
   .eyebrow{font-family:var(--mono);font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;
     color:var(--muted);margin:0 0 11px;display:flex;align-items:center;gap:9px;}
   .eyebrow::before{content:"";width:18px;height:2px;background:var(--teal);border-radius:2px}
+  .hint{color:var(--muted);font-size:.82rem;margin:-4px 0 11px}
 
   /* Input */
   textarea{width:100%;min-height:130px;resize:vertical;background:var(--bg);color:var(--ink);
     border:1px solid var(--line-strong);border-radius:11px;font-family:var(--mono);font-size:.82rem;
     line-height:1.55;padding:13px 14px;outline:none;word-break:break-all;}
+  textarea.tall{min-height:240px;word-break:normal;white-space:pre}
+  textarea[readonly]{color:#CFE3EE}
   textarea::placeholder{color:#4E6B81}
   textarea:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(34,211,189,.16)}
 
@@ -92,7 +105,7 @@
   .row:hover .rgo{opacity:1}
 
   /* Result */
-  #resultPanel{display:none}
+  #resultPanel,#encResultPanel{display:none}
 
   /* Replay header card */
   .rhead{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:15px 16px;margin-bottom:16px}
@@ -118,20 +131,37 @@
     color:var(--muted);text-align:center;line-height:1.15;padding:4px;}
   .pcard .pname{font-weight:600;display:flex;align-items:center;gap:8px;font-size:.95rem;min-width:0}
   .pcard .pname .uname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .pcard .swatch{width:13px;height:13px;border-radius:4px;flex:0 0 auto;border:1px solid rgba(255,255,255,.18)}
   .pcard .pmeta{font-family:var(--mono);font-size:.7rem;color:var(--muted);display:flex;gap:9px;flex-wrap:wrap}
   .pcard .pmeta .sc{color:var(--amber)}
   .pcard .pmeta .lv{color:var(--cyan)}
   .pcard .pacts{display:flex;gap:6px;margin-top:2px}
   .pcard .pacts .grow{flex:1}
 
-  .json-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
+  /* Inputs table */
+  .inputs-wrap{margin-bottom:18px}
+  .inputs-sum{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}
+  .itable-scroll{max-height:260px;overflow:auto;border:1px solid var(--line-strong);border-radius:11px;background:var(--bg)}
+  table.itable{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.74rem}
+  .itable th,.itable td{padding:6px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+  .itable th{color:var(--muted);font-weight:500;position:sticky;top:0;background:var(--bg-2)}
+  .itable td.k{color:var(--teal)}
+  .itable td.none{color:var(--muted)}
+  .itable td.bits{color:var(--amber)}
+
+  .json-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px;flex-wrap:wrap}
   .json-head .eyebrow{margin:0}
-  .mini{display:flex;gap:8px}
+  .mini{display:flex;gap:8px;flex-wrap:wrap}
   pre{margin:0;background:var(--bg);border:1px solid var(--line-strong);border-radius:11px;padding:15px;
     overflow:auto;max-height:520px;font-family:var(--mono);font-size:.78rem;line-height:1.55;color:#CFE3EE;}
   .j-key{color:var(--cyan)} .j-str{color:#9DE7B0} .j-num{color:var(--amber)}
   .j-bool{color:var(--coral)} .j-null{color:var(--muted)}
+
+  /* Round trip */
+  .rt{display:flex;flex-direction:column;gap:7px;margin:14px 0 4px}
+  .rt-line{font-size:.86rem;display:flex;gap:9px;align-items:baseline}
+  .rt-line .ic{font-family:var(--mono);font-weight:700;width:1.1em;text-align:center}
+  .rt-line.good .ic{color:var(--teal)} .rt-line.bad .ic{color:var(--coral)} .rt-line.warn .ic{color:var(--amber)}
+  .rt-line.good{color:var(--ink)} .rt-line.bad{color:#FFB4B4} .rt-line.warn{color:#FFE0A8}
 
   /* Pipeline */
   .pipe{display:flex;align-items:stretch;gap:0;flex-wrap:wrap}
@@ -153,6 +183,34 @@
   .store-chip{font-family:var(--mono);font-size:.76rem;border:1px dashed var(--line-strong);border-radius:9px;padding:7px 11px;color:var(--cyan)}
   .store-chip b{color:var(--teal)}
 
+  /* Step-by-step */
+  details.steps{margin-top:16px}
+  details.steps > summary{cursor:pointer;color:var(--cyan);font-size:.86rem;font-weight:600;list-style:none}
+  details.steps > summary::-webkit-details-marker{display:none}
+  details.steps > summary::before{content:"▸ ";color:var(--teal)}
+  details.steps[open] > summary::before{content:"▾ "}
+  .step{border-left:2px solid var(--line-strong);padding:4px 0 14px 16px;margin-left:6px;position:relative}
+  .step::before{content:"";position:absolute;left:-6px;top:9px;width:10px;height:10px;border-radius:50%;background:var(--teal)}
+  .step:first-child{margin-top:14px}
+  .step h3{font-size:.9rem;margin:0 0 3px}
+  .step h3 .no{font-family:var(--mono);color:var(--teal);font-size:.74rem;margin-right:7px}
+  .step p{margin:0 0 8px;color:var(--muted);font-size:.82rem;max-width:80ch}
+  .peek{background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px 11px;font-family:var(--mono);
+    font-size:.72rem;color:#A9C3D3;word-break:break-all;white-space:pre-wrap;max-height:130px;overflow:auto}
+  .peek mark{background:rgba(255,193,94,.18);color:var(--amber);border-radius:2px}
+  .peek .len{display:block;color:var(--muted);margin-top:5px}
+
+  /* Learn */
+  .learn{font-size:.9rem;color:#C6D8E4}
+  .learn h2{font-size:1rem;margin:18px 0 6px;color:var(--ink)}
+  .learn h2:first-of-type{margin-top:4px}
+  .learn p,.learn li{max-width:78ch}
+  .learn ul,.learn ol{padding-left:20px;margin:6px 0}
+  .learn li{margin:3px 0}
+  .flow{font-family:var(--mono);font-size:.76rem;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:11px 13px;
+    overflow:auto;white-space:pre;color:var(--cyan);margin:8px 0}
+  .learn a{color:var(--teal)}
+
   /* Banners */
   .banner{display:none;border-radius:11px;padding:12px 15px;font-size:.86rem;margin-bottom:18px;border:1px solid}
   .banner.show{display:block}
@@ -172,6 +230,8 @@
     .stage::before{left:50%;top:-22px;width:2px;height:22px;transform:translateX(-50%)}
     .row{grid-template-columns:auto 1fr auto}
     .row .rmap{display:none}
+    .tab .arrow{display:none}
+    .tab{padding:10px 10px}
   }
   @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -184,76 +244,177 @@
       <div class="glyph" aria-hidden="true"></div>
       <div>
         <h1>Replay Decoder <span class="dim">· Bonkverse</span></h1>
-        <p class="sub">Paste an encoded <code>replaydata</code> string to unwrap it into the raw replay object — or pull the latest replays from bonk.io and decode one.</p>
+        <p class="sub">Turn a bonk.io <code>replaydata</code> string into the replay object inside it, or turn a replay object back into a string. Every step is shown, both ways.</p>
       </div>
     </div>
-    <div class="pill">PSON <b>·</b> LZString <b>·</b> base64</div>
+    <div class="pill">PSON <b>·</b> base64 <b>·</b> LZString <b>·</b> case flip</div>
   </header>
 
-  <!-- Input -->
-  <section class="panel">
-    <p class="eyebrow">Encoded replaydata</p>
-    <textarea id="input" spellcheck="false"
-      placeholder="Paste a replaydata string from the bonk.io replay API here…"></textarea>
-    <div class="controls">
-      <button class="btn-primary" id="decodeBtn">Decode</button>
-      <button class="btn-ghost" id="clearBtn">Clear</button>
-      <div class="spacer"></div>
-      <button class="btn-ghost" id="latestBtn">Fetch latest from bonk.io</button>
-      <button class="btn-ghost btn-small" id="byIdToggle" aria-expanded="false">by ID</button>
-    </div>
-    <div class="byid" id="byIdRow" hidden>
-      <label for="fromInput">Fetch 10 starting at ID</label>
-      <input id="fromInput" type="number" min="0" placeholder="e.g. 12096" />
-      <button class="btn-ghost btn-small" id="fetchBtn">Fetch</button>
-    </div>
-  </section>
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tab-decode" aria-selected="true" data-tab="decode">Decode <span class="arrow">string → object</span></button>
+    <button class="tab" role="tab" id="tab-encode" aria-selected="false" data-tab="encode">Encode <span class="arrow">object → string</span></button>
+    <button class="tab" role="tab" id="tab-learn" aria-selected="false" data-tab="learn">How replays work</button>
+  </nav>
 
   <div class="banner" id="banner"></div>
 
-  <!-- Fetched rows -->
-  <section class="panel" id="fetchPanel">
-    <p class="eyebrow" id="fetchTitle">Latest from bonk.io</p>
-    <div class="rows" id="rows"></div>
-  </section>
-
-  <!-- Result -->
-  <section class="panel" id="resultPanel">
-    <div class="rhead" id="replayHead"></div>
-
-    <div class="players-head">
-      <p class="eyebrow">Players &amp; skins</p>
-      <button class="btn-ghost btn-tiny" id="dlAllAvatars">Download all avatars</button>
-    </div>
-    <div class="players-grid" id="players"></div>
-
-    <div class="json-head">
-      <p class="eyebrow">Full decoded replay</p>
-      <div class="mini">
-        <button class="btn-ghost btn-small" id="copyBtn">Copy JSON</button>
-        <button class="btn-ghost btn-small" id="dlBtn">Download</button>
+  <!-- ═════════════ DECODE ═════════════ -->
+  <div data-pane="decode">
+    <section class="panel">
+      <p class="eyebrow">Encoded replaydata</p>
+      <textarea id="input" spellcheck="false"
+        placeholder="Paste a replaydata string from the bonk.io replay API here…"></textarea>
+      <div class="controls">
+        <button class="btn-primary" id="decodeBtn">Decode</button>
+        <button class="btn-ghost" id="clearBtn">Clear</button>
+        <div class="spacer"></div>
+        <button class="btn-ghost" id="latestBtn">Fetch latest from bonk.io</button>
+        <button class="btn-ghost btn-small" id="byIdToggle" aria-expanded="false">by ID</button>
       </div>
-    </div>
-    <pre id="json"></pre>
-  </section>
+      <div class="byid" id="byIdRow" hidden>
+        <label for="fromInput">Fetch 10 starting at ID</label>
+        <input id="fromInput" type="number" min="0" placeholder="e.g. 12096" />
+        <button class="btn-ghost btn-small" id="fetchBtn">Fetch</button>
+      </div>
+    </section>
 
-  <!-- Pipeline -->
+    <section class="panel" id="fetchPanel">
+      <p class="eyebrow" id="fetchTitle">Latest from bonk.io</p>
+      <div class="rows" id="rows"></div>
+    </section>
+
+    <section class="panel" id="resultPanel">
+      <div class="rhead" id="replayHead"></div>
+
+      <div class="players-head">
+        <p class="eyebrow">Players &amp; skins</p>
+        <button class="btn-ghost btn-tiny" id="dlAllAvatars">Download all avatars</button>
+      </div>
+      <div class="players-grid" id="players"></div>
+
+      <div class="inputs-wrap" id="inputsWrap">
+        <p class="eyebrow">Inputs · the actual gameplay</p>
+        <p class="hint">A replay isn't a video. It's the starting state plus every key change each player made. bonk.io re-runs the physics with these to play it back.</p>
+        <div class="inputs-sum" id="inputsSum"></div>
+        <div class="itable-scroll"><table class="itable" id="inputsTable"></table></div>
+      </div>
+
+      <div class="json-head">
+        <p class="eyebrow">Full decoded replay</p>
+        <div class="mini">
+          <button class="btn-ghost btn-small" id="copyBtn">Copy JSON</button>
+          <button class="btn-ghost btn-small" id="dlBtn">Download</button>
+          <button class="btn-primary btn-small" id="toEncodeBtn">Encode it back →</button>
+        </div>
+      </div>
+      <pre id="json"></pre>
+    </section>
+  </div>
+
+  <!-- ═════════════ ENCODE ═════════════ -->
+  <div data-pane="encode" hidden>
+    <section class="panel">
+      <p class="eyebrow">Replay object (JSON)</p>
+      <p class="hint">Paste a decoded replay, or decode one first and press <b>Encode it back</b>. You can edit the JSON before encoding, e.g. rename a player.</p>
+      <textarea id="encInput" class="tall" spellcheck="false"
+        placeholder='{ "playerArray": [...], "startingState": {...}, "inputs": "...", "gameSettings": {...}, "es": 1234, ... }'></textarea>
+      <div class="controls">
+        <button class="btn-primary" id="encodeBtn">Encode</button>
+        <button class="btn-ghost" id="encClearBtn">Clear</button>
+        <div class="spacer"></div>
+        <button class="btn-ghost btn-small" id="useLastBtn">Use last decoded replay</button>
+      </div>
+    </section>
+
+    <section class="panel" id="encResultPanel">
+      <div class="json-head">
+        <p class="eyebrow">Encoded replaydata</p>
+        <div class="mini">
+          <button class="btn-ghost btn-small" id="encCopyBtn">Copy</button>
+          <button class="btn-ghost btn-small" id="encDlBtn">Download</button>
+          <button class="btn-primary btn-small" id="toDecodeBtn">← Decode it again</button>
+        </div>
+      </div>
+      <textarea id="encOutput" readonly spellcheck="false"></textarea>
+      <div class="rt" id="roundTrip"></div>
+    </section>
+  </div>
+
+  <!-- ═════════════ PIPELINE (shared by decode + encode) ═════════════ -->
   <section class="panel" id="pipePanel">
-    <p class="eyebrow">Decode pipeline</p>
-    <div class="pipe" id="pipe">
-      <div class="stage" data-stage="input"><div class="st-no">01</div><div class="st-name">Encoded input</div><div class="st-val" data-val>—</div><span class="st-unit">chars</span></div>
-      <div class="stage" data-stage="flip"><div class="st-no">02</div><div class="st-name">Case-flip ×101</div><div class="st-val" data-val>—</div><span class="st-unit">chars</span></div>
-      <div class="stage" data-stage="lz"><div class="st-no">03</div><div class="st-name">LZString → b64</div><div class="st-val" data-val>—</div><span class="st-unit">chars</span></div>
-      <div class="stage" data-stage="pson"><div class="st-no">04</div><div class="st-name">base64 → PSON</div><div class="st-val" data-val>—</div><span class="st-unit">bytes</span></div>
-      <div class="stage" data-stage="object"><div class="st-no">05</div><div class="st-name">PSON → object</div><div class="st-val" data-val>—</div><span class="st-unit">top keys</span></div>
-    </div>
+    <p class="eyebrow" id="pipeTitle">Decode pipeline</p>
+    <div class="pipe" id="pipe"></div>
     <div class="pipe-foot">
       <span class="store-chip" id="storeChip" style="display:none"></span>
       <span id="pipeNote">Run a decode to trace the bytes through each stage.</span>
     </div>
+    <details class="steps" id="stepsBox" style="display:none">
+      <summary>Show the data after every step</summary>
+      <div id="steps"></div>
+    </details>
   </section>
 
-  <footer>decode runs server-side through the project's real <span style="color:var(--cyan)">codec.js</span> · same path the scraper uses</footer>
+  <!-- ═════════════ LEARN ═════════════ -->
+  <div data-pane="learn" hidden>
+    <section class="panel learn">
+      <p class="eyebrow">How replays work</p>
+
+      <h2>What is a replay?</h2>
+      <p>A bonk.io replay is <b>not a video</b>. It's a recipe for re-running one round: the map and starting positions, who was playing, the room settings, and a list of every key each player pressed and when. bonk.io's physics is deterministic, so if you start from the same state and feed in the same keys at the same steps, you get the exact same game every time.</p>
+      <p>The physics runs at <b>30 steps per second</b>. "Step" (or "frame") just means one tick of that clock.</p>
+
+      <h2>What's inside one</h2>
+      <ul>
+        <li><code>playerArray</code> — one entry per player slot: <code>userName</code>, <code>level</code>, <code>team</code>, <code>guest</code>, and their skin (<code>avatar</code>).</li>
+        <li><code>startingState</code> — the world at step 0: the map (<code>mm</code> for its info, plus its physics), every player's position and speed, <code>scores</code>, the random <code>seed</code>, and the round count.</li>
+        <li><code>inputs</code> — the gameplay. A packed list of "player <i>X</i> changed their keys to <i>Y</i> at step <i>Z</i>". Only <i>changes</i> are saved: a key stays held until the next change.</li>
+        <li><code>adminInputs</code> — rare host actions during the round.</li>
+        <li><code>gameSettings</code> — mode (<code>mo</code>: <code>b</code> classic, <code>ar</code> arrows, <code>ard</code> death arrows, <code>sp</code> grapple, <code>v</code> VTOL, <code>f</code> football), teams on/off (<code>tea</code>), win limit (<code>wl</code>).</li>
+        <li><code>es</code> — the end step, so <code>es ÷ 30</code> is the length in seconds.</li>
+        <li><code>mn</code>, <code>ma</code>, <code>mid</code> — map name, author, and id, repeated at the top for convenience.</li>
+      </ul>
+
+      <h2>How bonk.io packs it into a string</h2>
+      <p>To send a replay over the web, bonk.io squeezes that object into one long piece of text. It does four things in a row:</p>
+      <div class="flow">replay object
+   │ 1. PSON          compact binary JSON (common words become 1-byte codes)
+   ▼
+bytes
+   │ 2. base64        bytes → plain text (A–Z a–z 0–9 + /)
+   ▼
+base64 text
+   │ 3. LZString      compress, using only URL-safe characters
+   ▼
+compressed text
+   │ 4. case flip     swap upper/lower case on the first 101 characters
+   ▼
+replaydata  ← what the bonk.io API hands out</div>
+
+      <h2>Decoding = the same steps backwards</h2>
+      <p>Every step can be undone exactly, so decoding is just steps 4 → 1 in reverse: flip the case back, LZString-decompress, base64-decode, then PSON-decode. That's what the <b>Decode</b> tab does.</p>
+
+      <h2>Encoding = the steps forwards</h2>
+      <p>The <b>Encode</b> tab runs steps 1 → 4. Because nothing is lost along the way, encoding a replay you just decoded gives back <b>the exact same string</b>, character for character. The tool checks this for you after every encode.</p>
+
+      <h2>Each step, in plain words</h2>
+      <ol>
+        <li><b>PSON</b> is like JSON but stored as bytes instead of text, which makes it smaller. It also has a shared word list (the "dictionary"): words like <code>physics</code> or <code>shapes</code> get written as a tiny number. Both sides need the <i>same</i> list in the <i>same</i> order, or the words come out wrong.</li>
+        <li><b>base64</b> turns raw bytes into safe text characters so they can travel inside a web request. It makes data about a third bigger.</li>
+        <li><b>LZString</b> is a compressor (it finds repeated bits and replaces them with short references), then writes the result with URL-safe characters.</li>
+        <li><b>Case flip</b> is a small bonk.io quirk. It isn't encryption. It just means a string won't decompress unless you flip it back first.</li>
+      </ol>
+
+      <h2>The inputs inside the inputs</h2>
+      <p>After decoding, <code>inputs</code> is still a base64 string. Unpacked, it's a list of 7-byte records: player slot (2 bytes), step (4 bytes), and the keys (1 byte). The keys byte uses one bit per key: left = 1, right = 2, up = 4, down = 8, heavy = 16, special = 32. So <code>5</code> means left + up held. The Decode tab shows the first few of these in the <b>Inputs</b> table.</p>
+
+      <h2>How Bonkverse stores replays</h2>
+      <p>The scraper decodes each replay down to the PSON bytes, gzips them, and stores those in Postgres. That's 40–60% smaller than the original string, and since every step is reversible, the original string can be rebuilt any time with the encoder.</p>
+
+      <p style="margin-top:16px">Longer write-up with code pointers: <a href="https://github.com/Bonkverse/ReplayDecoderTool/blob/main/docs/HOW-REPLAYS-WORK.md" target="_blank" rel="noopener">docs/HOW-REPLAYS-WORK.md</a></p>
+    </section>
+  </div>
+
+  <footer>decode and encode run server-side through the project's real <span style="color:var(--cyan)">codec.js</span> · same code the scraper uses</footer>
 </div>
 
 <!-- Client-side avatar renderer (ported skin engine). Sets window.renderBonkAvatar. -->
@@ -262,11 +423,16 @@
 
 <script>
 const $ = (s) => document.querySelector(s);
-let lastDecoded = null;
+let lastDecoded = null;   // decoded object from the last successful decode
+let lastRaw = null;       // the replaydata string that produced it
 let lastPlayers = [];
 let lastMeta = null;
+let encodeSource = null;  // replaydata the current encoder JSON came from (for the "identical" check)
+let lastEncoded = null;
 
 const MODES = { b:"Classic", ar:"Arrows", ard:"Death Arrows", sp:"Grapple", v:"VTOL", f:"Football" };
+const KEY_NAMES = { left:"←", right:"→", up:"↑", down:"↓", action:"heavy", action2:"special" };
+const FLIP_LENGTH = 101;
 
 function banner(kind, html){ const b=$("#banner"); b.className="banner show "+kind; b.innerHTML=html; }
 function clearBanner(){ $("#banner").className="banner"; }
@@ -275,10 +441,9 @@ function clearBanner(){ $("#banner").className="banner"; }
 // land inside attributes (title="..."), where an unescaped " breaks out.
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 function fmt(n){ return Number(n).toLocaleString("en-US"); }
-function hexColor(n){ if(n==null||isNaN(n)) return "#334"; return "#"+(n&0xffffff).toString(16).padStart(6,"0"); }
 function safeName(s){ return String(s||"player").replace(/[^a-z0-9_-]+/gi,"_").slice(0,40); }
-function download(name, text){
-  const blob=new Blob([text],{type:"application/json"});
+function download(name, text, type="application/json"){
+  const blob=new Blob([text],{type});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; a.click(); URL.revokeObjectURL(a.href);
 }
 async function copyText(text, btn){
@@ -286,24 +451,117 @@ async function copyText(text, btn){
   if(btn){ const t=btn.textContent; btn.textContent="Copied"; setTimeout(()=>btn.textContent=t,1100); }
 }
 
-// ── Pipeline ──
-const STAGES=["input","flip","lz","pson","object"];
-function resetPipe(){
-  STAGES.forEach(s=>{const el=$(`.stage[data-stage="${s}"]`);el.classList.remove("on","fail");el.querySelector("[data-val]").textContent="—";});
-  $("#storeChip").style.display="none";
-  $("#pipeNote").textContent="Run a decode to trace the bytes through each stage.";
+// ── Tabs ──
+function showTab(name){
+  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-selected", String(t.dataset.tab===name)));
+  document.querySelectorAll("[data-pane]").forEach(p=>p.hidden = p.dataset.pane!==name);
+  $("#pipePanel").hidden = name==="learn";
+  clearBanner();
+  if(name==="decode") setPipe("decode");
+  if(name==="encode") setPipe("encode");
 }
-function fillPipe(stats, topKeyCount){
-  const vals={input:fmt(stats.encodedChars),flip:fmt(stats.encodedChars),lz:fmt(stats.base64Chars),pson:fmt(stats.psonBytes),object:fmt(topKeyCount)};
-  $("#pipeNote").textContent="Each stage unwraps one layer of the bonk.io encoding.";
-  STAGES.forEach((s,i)=>{const el=$(`.stage[data-stage="${s}"]`);setTimeout(()=>{el.classList.add("on");el.querySelector("[data-val]").textContent=vals[s];}, i*110);});
-  const chip=$("#storeChip"); chip.style.display="inline-block";
-  chip.innerHTML=`stored as gzip → <b>${fmt(stats.gzipBytes)} bytes</b> &nbsp;·&nbsp; ${stats.savingsPct}% smaller than the encoded string`;
+document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>showTab(t.dataset.tab)));
+
+// ── Pipeline ──
+// Decode and encode are the same four steps, run in opposite directions.
+const PIPES = {
+  decode: {
+    title: "Decode pipeline",
+    idle:  "Run a decode to trace the bytes through each stage.",
+    stages: [
+      ["input",  "Encoded input",   "chars"],
+      ["flip",   "Case-flip ×101",  "chars"],
+      ["lz",     "LZString → b64",  "chars"],
+      ["pson",   "base64 → PSON",   "bytes"],
+      ["object", "PSON → object",   "top keys"],
+    ],
+  },
+  encode: {
+    title: "Encode pipeline",
+    idle:  "Run an encode to watch the replay get packed, step by step.",
+    stages: [
+      ["object", "Replay object",   "top keys"],
+      ["pson",   "object → PSON",   "bytes"],
+      ["base64", "PSON → base64",   "chars"],
+      ["lz",     "b64 → LZString",  "chars"],
+      ["flip",   "Case-flip ×101",  "chars"],
+    ],
+  },
+};
+let pipeMode = null;
+function setPipe(mode){
+  if(pipeMode===mode) return;
+  pipeMode = mode;
+  const p = PIPES[mode];
+  $("#pipeTitle").textContent = p.title;
+  $("#pipe").innerHTML = p.stages.map(([id,name,unit],i)=>
+    `<div class="stage" data-stage="${id}"><div class="st-no">0${i+1}</div><div class="st-name">${name}</div><div class="st-val" data-val>—</div><span class="st-unit">${unit}</span></div>`
+  ).join("");
+  resetPipe();
+}
+function resetPipe(){
+  document.querySelectorAll("#pipe .stage").forEach(el=>{el.classList.remove("on","fail");el.querySelector("[data-val]").textContent="—";});
+  $("#storeChip").style.display="none";
+  $("#pipeNote").textContent = PIPES[pipeMode].idle;
+  $("#stepsBox").style.display="none";
+}
+function fillPipe(vals, note){
+  $("#pipeNote").textContent = note;
+  PIPES[pipeMode].stages.forEach(([id],i)=>{
+    const el=$(`#pipe .stage[data-stage="${id}"]`);
+    setTimeout(()=>{el.classList.add("on");el.querySelector("[data-val]").textContent=vals[id];}, i*110);
+  });
 }
 function failPipe(stage){
-  const order={input:0,lz:2,base64:2,pson:3}; const failIdx=order[stage]??0;
-  STAGES.forEach((s,i)=>{const el=$(`.stage[data-stage="${s}"]`); if(i<failIdx)el.classList.add("on"); else if(i===failIdx)el.classList.add("fail");});
-  $("#pipeNote").textContent="Decode stopped — check the message above.";
+  const ids = PIPES[pipeMode].stages.map(s=>s[0]);
+  let failIdx = ids.indexOf(stage==="base64" && pipeMode==="decode" ? "pson" : stage);
+  if(failIdx<0) failIdx=0;
+  ids.forEach((id,i)=>{const el=$(`#pipe .stage[data-stage="${id}"]`); if(i<failIdx)el.classList.add("on"); else if(i===failIdx)el.classList.add("fail");});
+  $("#pipeNote").textContent = (pipeMode==="decode"?"Decode":"Encode")+" stopped — check the message above.";
+}
+
+// ── Step-by-step previews ──
+function peekText(prev, {markFlip=false}={}){
+  if(!prev) return "";
+  let body;
+  if(markFlip){
+    const head = prev.head.slice(0, FLIP_LENGTH), rest = prev.head.slice(FLIP_LENGTH);
+    body = `<mark>${escapeHtml(head)}</mark>${escapeHtml(rest)}`;
+  } else body = escapeHtml(prev.head);
+  const more = prev.length > prev.head.length ? "…" : "";
+  return `<div class="peek">${body}${more}<span class="len">${fmt(prev.length)} chars total</span></div>`;
+}
+function peekBytes(prev){
+  const more = prev.length > prev.hex.split(" ").length ? " …" : "";
+  return `<div class="peek">${prev.hex}${more}<span class="len">${fmt(prev.length)} bytes total (shown as hex)</span></div>`;
+}
+function peekObject(keys){
+  return `<div class="peek">{ ${keys.map(k=>escapeHtml(k)).join(", ")} }<span class="len">${keys.length} top-level keys</span></div>`;
+}
+function step(no, title, text, peek){
+  return `<div class="step"><h3><span class="no">${no}</span>${title}</h3><p>${text}</p>${peek}</div>`;
+}
+function renderSteps(html){
+  $("#steps").innerHTML = html;
+  $("#stepsBox").style.display = "block";
+}
+function decodeSteps(s, keys){
+  return [
+    step("IN", "The string from bonk.io", "What the API gives you. It looks like random text, but it's a compressed, packed replay.", peekText(s.input, {markFlip:true})),
+    step("01", "Flip the case back", `The highlighted first ${FLIP_LENGTH} characters get upper and lower case swapped. Compare it with the line above: same letters, opposite case.`, peekText(s.flipped, {markFlip:true})),
+    step("02", "LZString-decompress", "Undo the compression. The result is base64: plain text that stands for binary bytes. Notice it's longer now.", peekText(s.base64)),
+    step("03", "base64-decode", "Turn the base64 text into raw bytes. These are PSON, a compact binary form of JSON.", peekBytes(s.pson)),
+    step("04", "PSON-decode", "Read the bytes back into a normal object. This is the replay you see in the JSON view.", peekObject(keys)),
+  ].join("");
+}
+function encodeSteps(s, keys){
+  return [
+    step("IN", "The replay object", "The JSON you pasted. It's going to be packed into one string.", peekObject(keys)),
+    step("01", "PSON-encode", "Write the object as compact binary. Common words like <code>physics</code> become one-byte codes from the shared dictionary.", peekBytes(s.pson)),
+    step("02", "base64-encode", "Turn the bytes into plain text so they can travel inside a web request. About a third bigger than the bytes.", peekText(s.base64)),
+    step("03", "LZString-compress", "Compress the base64 text, writing the result with URL-safe characters only. Usually much shorter.", peekText(s.compressed, {markFlip:true})),
+    step("04", "Flip the case", `Swap upper and lower case on the highlighted first ${FLIP_LENGTH} characters. Compare with the line above. This is the finished replaydata.`, peekText(s.output, {markFlip:true})),
+  ].join("");
 }
 
 // ── JSON highlight ──
@@ -313,20 +571,20 @@ function highlight(json){
       (m)=>{let cls="j-num"; if(/^"/.test(m))cls=/:$/.test(m)?"j-key":"j-str"; else if(/true|false/.test(m))cls="j-bool"; else if(/null/.test(m))cls="j-null"; return `<span class="${cls}">${m}</span>`;});
 }
 
-// ── Result ──
+// ── Decode result ──
 function renderHead(meta, ctx){
   const title = meta.mapName ? escapeHtml(meta.mapName) : "Unknown map";
   const by = meta.mapAuthor ? `<span class="by">by ${escapeHtml(meta.mapAuthor)}</span>` : "";
   const chips = [];
-  if(ctx && ctx.id != null) chips.push(`<span class="mchip">replay <b>#${ctx.id}</b></span>`);
-  if(meta.mapId != null)    chips.push(`<span class="mchip">map <b>#${meta.mapId}</b></span>`);
+  if(ctx && ctx.id != null) chips.push(`<span class="mchip">replay <b>#${escapeHtml(ctx.id)}</b></span>`);
+  if(meta.mapId != null)    chips.push(`<span class="mchip">map <b>#${escapeHtml(meta.mapId)}</b></span>`);
   if(meta.mode)             chips.push(`<span class="mchip mode">${escapeHtml(MODES[meta.mode]||meta.mode)}</span>`);
   chips.push(`<span class="mchip">${lastPlayers.length} player${lastPlayers.length===1?"":"s"}</span>`);
   if(meta.teams!=null)      chips.push(`<span class="mchip">${meta.teams?"Teams":"FFA"}</span>`);
-  if(meta.winLimit!=null)   chips.push(`<span class="mchip">win limit <b>${meta.winLimit}</b></span>`);
-  if(Array.isArray(meta.scores)) chips.push(`<span class="mchip">scores <b>${meta.scores.join("–")}</b></span>`);
-  if(meta.seed!=null)       chips.push(`<span class="mchip">seed ${meta.seed}</span>`);
-  if(meta.frames!=null)     chips.push(`<span class="mchip">${fmt(meta.frames)} frames</span>`);
+  if(meta.winLimit!=null)   chips.push(`<span class="mchip">win limit <b>${escapeHtml(meta.winLimit)}</b></span>`);
+  if(Array.isArray(meta.scores)) chips.push(`<span class="mchip">scores <b>${escapeHtml(meta.scores.join("–"))}</b></span>`);
+  if(meta.seed!=null)       chips.push(`<span class="mchip">seed ${escapeHtml(meta.seed)}</span>`);
+  if(meta.frames!=null)     chips.push(`<span class="mchip">${fmt(meta.frames)} frames · ${(meta.frames/30).toFixed(1)}s</span>`);
   $("#replayHead").innerHTML = `<div class="map-title">${title} ${by}</div><div class="meta-chips">${chips.join("")}</div>`;
 }
 
@@ -334,9 +592,10 @@ function renderPlayers(players){
   if(!players.length){ $("#players").innerHTML = `<div class="pcard"><div class="pmeta">No playerArray in this replay.</div></div>`; return; }
   $("#players").innerHTML = players.map((p,i)=>{
     const meta = [
-      `<span class="lv">lv ${p.level}</span>`,
-      p.score!=null ? `<span class="sc">score ${p.score}</span>` : "",
-      p.ping!=null  ? `<span>ping ${p.ping}</span>` : "",
+      `<span>slot ${p.slot}</span>`,
+      `<span class="lv">lv ${escapeHtml(p.level)}</span>`,
+      p.score!=null ? `<span class="sc">score ${escapeHtml(p.score)}</span>` : "",
+      p.ping!=null  ? `<span>ping ${escapeHtml(p.ping)}</span>` : "",
       p.guest       ? `<span>guest</span>` : "",
     ].filter(Boolean).join("");
     const hasAvatar = p.avatar && Array.isArray(p.avatar.layers);
@@ -384,10 +643,27 @@ function renderPlayers(players){
   }
 }
 
+function renderInputs(inp){
+  if(!inp){ $("#inputsWrap").style.display="none"; return; }
+  $("#inputsWrap").style.display="block";
+  const chips = [`<span class="mchip"><b>${fmt(inp.total)}</b> key changes</span>`,
+    `<span class="mchip">packed as ${fmt(inp.base64Chars)} base64 chars</span>`];
+  inp.perPlayer.forEach(p=>chips.push(`<span class="mchip">${escapeHtml(p.name ?? "slot "+p.id)} · <b>${fmt(p.count)}</b></span>`));
+  $("#inputsSum").innerHTML = chips.join("");
+  const rows = inp.sample.map(e=>{
+    const keys = e.keys.length ? e.keys.map(k=>KEY_NAMES[k]||k).join(" ") : "none (all released)";
+    return `<tr><td>${fmt(e.step)}</td><td>${(e.step/30).toFixed(2)}s</td><td>${escapeHtml(e.name ?? "slot "+e.player)}</td>
+      <td class="bits">${e.bits}</td><td class="${e.keys.length?"k":"none"}">${escapeHtml(keys)}</td></tr>`;
+  }).join("");
+  const more = inp.total > inp.sample.length ? `<tr><td colspan="5" class="none">…and ${fmt(inp.total-inp.sample.length)} more. Download the JSON and unpack <code>inputs</code> for the full list.</td></tr>` : "";
+  $("#inputsTable").innerHTML = `<thead><tr><th>step</th><th>time</th><th>player</th><th>bits</th><th>keys now held</th></tr></thead><tbody>${rows}${more}</tbody>`;
+}
+
 function renderResult(data, ctx){
   lastDecoded=data.decoded; lastPlayers=data.players||[]; lastMeta=data.meta||{};
   renderHead(lastMeta, ctx);
   renderPlayers(lastPlayers);
+  renderInputs(data.inputs);
   const pretty=JSON.stringify(data.decoded,null,2);
   $("#json").innerHTML = pretty.length>600000 ? escapeHtml(pretty) : highlight(pretty);
   $("#resultPanel").style.display="block";
@@ -396,6 +672,7 @@ function renderResult(data, ctx){
 
 // ── Decode ──
 async function decode(ctx){
+  setPipe("decode");
   const raw=$("#input").value.trim(); clearBanner();
   if(!raw){ banner("err","Paste an encoded <code>replaydata</code> string first."); return; }
   const btn=$("#decodeBtn"); btn.disabled=true; btn.innerHTML=`<span class="spin"></span>Decoding`; resetPipe();
@@ -403,10 +680,64 @@ async function decode(ctx){
     const res=await fetch("/api/decode",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({replaydata:raw})});
     const data=await res.json();
     if(!data.ok){ banner("err",escapeHtml(data.error||"Decode failed.")); failPipe(data.stage||"input"); $("#resultPanel").style.display="none"; return; }
+    lastRaw = raw;
     renderResult(data, ctx);
-    fillPipe(data.stats,(data.topKeys||[]).length);
+    const keys = data.topKeys||[], st = data.stats;
+    fillPipe({input:fmt(st.encodedChars),flip:fmt(st.encodedChars),lz:fmt(st.base64Chars),pson:fmt(st.psonBytes),object:fmt(keys.length)},
+      "Each stage unwraps one layer of the bonk.io encoding.");
+    const chip=$("#storeChip"); chip.style.display="inline-block";
+    chip.innerHTML=`stored as gzip → <b>${fmt(st.gzipBytes)} bytes</b> &nbsp;·&nbsp; ${st.savingsPct}% smaller than the encoded string`;
+    if(data.steps) renderSteps(decodeSteps(data.steps, keys));
   }catch(err){ banner("err","Couldn't reach the decoder: "+escapeHtml(err.message)); }
   finally{ btn.disabled=false; btn.textContent="Decode"; }
+}
+
+// ── Encode ──
+function loadIntoEncoder(obj, sourceRaw){
+  $("#encInput").value = JSON.stringify(obj, null, 2);
+  encodeSource = sourceRaw ?? null;
+  $("#encResultPanel").style.display="none";
+  showTab("encode");
+}
+
+async function encode(){
+  setPipe("encode");
+  clearBanner();
+  const text=$("#encInput").value.trim();
+  if(!text){ banner("err","Paste a replay object (JSON) first, or decode a replay and press <b>Encode it back</b>."); return; }
+  let replay;
+  try{ replay = JSON.parse(text); }
+  catch(err){ banner("err","That isn't valid JSON: "+escapeHtml(err.message)); failPipe("object"); return; }
+
+  const btn=$("#encodeBtn"); btn.disabled=true; btn.innerHTML=`<span class="spin"></span>Encoding`; resetPipe();
+  try{
+    const res=await fetch("/api/encode",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({replay})});
+    const data=await res.json();
+    if(!data.ok){ banner("err",escapeHtml(data.error||"Encode failed.")); failPipe(data.stage==="input"?"object":data.stage); $("#encResultPanel").style.display="none"; return; }
+    lastEncoded = data.replaydata;
+    $("#encOutput").value = data.replaydata;
+    $("#encResultPanel").style.display="block";
+
+    // Round-trip results
+    const lines = [];
+    lines.push(data.roundTrip.ok
+      ? `<div class="rt-line good"><span class="ic">✓</span><span>Decodes back to exactly the replay you encoded.</span></div>`
+      : `<div class="rt-line bad"><span class="ic">✗</span><span>Decoding the result didn't give the same replay back${data.roundTrip.error?": "+escapeHtml(data.roundTrip.error):""}.</span></div>`);
+    if(encodeSource){
+      lines.push(data.replaydata===encodeSource
+        ? `<div class="rt-line good"><span class="ic">✓</span><span>Identical to the original string from bonk.io, character for character.</span></div>`
+        : `<div class="rt-line warn"><span class="ic">≠</span><span>Different from the original string. Expected if you edited the JSON; otherwise the original was packed slightly differently.</span></div>`);
+    }
+    (data.warnings||[]).forEach(w=>lines.push(`<div class="rt-line warn"><span class="ic">!</span><span>${escapeHtml(w)}</span></div>`));
+    $("#roundTrip").innerHTML = lines.join("");
+
+    const st=data.stats;
+    fillPipe({object:fmt(st.topKeys),pson:fmt(st.psonBytes),base64:fmt(st.base64Chars),lz:fmt(st.compressedChars),flip:fmt(st.encodedChars)},
+      "Each stage adds one layer of the bonk.io encoding — the decode pipeline, run backwards.");
+    renderSteps(encodeSteps(data.steps, Object.keys(replay)));
+    $("#encResultPanel").scrollIntoView({behavior:"smooth",block:"nearest"});
+  }catch(err){ banner("err","Couldn't reach the encoder: "+escapeHtml(err.message)); }
+  finally{ btn.disabled=false; btn.textContent="Encode"; }
 }
 
 // ── Fetch latest ──
@@ -418,7 +749,7 @@ async function fetchLatest(){
     if(!data.ok){ banner("err",escapeHtml(data.error||"Fetch failed.")); return; }
     if(data.count===0){ banner("info",escapeHtml(data.note||"No replays returned.")); $("#fetchPanel").style.display="none"; return; }
     $("#fetchTitle").textContent=`Latest from bonk.io — newest id #${data.maxId}`;
-    banner("info",`Pulled the <b>newest ${data.count}</b> replays (up to id <code>#${data.maxId}</code>). Pick one to decode it.`);
+    banner("info",`Pulled the <b>newest ${data.count}</b> replays (up to id <code>#${escapeHtml(data.maxId)}</code>). Pick one to decode it.`);
     renderRows(data.replays);
   }catch(err){ banner("err","Couldn't reach the fetcher: "+escapeHtml(err.message)); }
   finally{ btn.disabled=false; btn.textContent=label; }
@@ -435,7 +766,7 @@ async function fetchById(){
     if(!data.ok){ banner("err",escapeHtml(data.error||"Fetch failed.")); return; }
     if(data.count===0){ banner("info",escapeHtml(data.note||"No replays returned.")); $("#fetchPanel").style.display="none"; return; }
     $("#fetchTitle").textContent=`From bonk.io — starting at id #${data.startingFrom}`;
-    banner("info",`Pulled <b>${data.count}</b> replays starting at id <code>#${data.startingFrom}</code>. Pick one to decode it.`);
+    banner("info",`Pulled <b>${data.count}</b> replays starting at id <code>#${escapeHtml(data.startingFrom)}</code>. Pick one to decode it.`);
     renderRows(data.replays);
   }catch(err){ banner("err","Couldn't reach the fetcher: "+escapeHtml(err.message)); }
   finally{ btn.disabled=false; btn.textContent="Fetch"; }
@@ -444,8 +775,8 @@ async function fetchById(){
 function renderRows(replays){
   $("#rows").innerHTML=replays.map((r,i)=>`
     <button class="row" data-i="${i}">
-      <span class="rid">#${r.id}</span>
-      <span class="rmap">map ${r.mapid ?? "—"}</span>
+      <span class="rid">#${escapeHtml(r.id)}</span>
+      <span class="rmap">map ${escapeHtml(r.mapid ?? "—")}</span>
       <span class="rprev">${escapeHtml(r.replaydata.slice(0,80))}…</span>
       <span class="rgo">decode →</span>
     </button>`).join("");
@@ -475,12 +806,34 @@ $("#clearBtn").addEventListener("click",()=>{
 });
 $("#copyBtn").addEventListener("click",(e)=>{ if(lastDecoded!=null) copyText(JSON.stringify(lastDecoded,null,2), e.currentTarget); });
 $("#dlBtn").addEventListener("click",()=>{ if(lastDecoded!=null) download("replay.json", JSON.stringify(lastDecoded,null,2)); });
+$("#toEncodeBtn").addEventListener("click",()=>{ if(lastDecoded!=null) loadIntoEncoder(lastDecoded, lastRaw); });
 $("#dlAllAvatars").addEventListener("click",()=>{
   if(!lastPlayers.length) return;
   const all=lastPlayers.map(p=>({username:p.username, avatar:p.avatar}));
   download("avatars.json", JSON.stringify(all,null,2));
 });
 $("#input").addEventListener("keydown",(e)=>{ if((e.metaKey||e.ctrlKey)&&e.key==="Enter") decode(null); });
+
+$("#encodeBtn").addEventListener("click",encode);
+$("#encInput").addEventListener("keydown",(e)=>{ if((e.metaKey||e.ctrlKey)&&e.key==="Enter") encode(); });
+$("#encClearBtn").addEventListener("click",()=>{
+  $("#encInput").value=""; encodeSource=null; clearBanner(); resetPipe();
+  $("#encResultPanel").style.display="none"; $("#encInput").focus();
+});
+$("#useLastBtn").addEventListener("click",()=>{
+  if(lastDecoded==null){ banner("info","Nothing decoded yet. Decode a replay on the <b>Decode</b> tab first."); return; }
+  loadIntoEncoder(lastDecoded, lastRaw);
+});
+$("#encCopyBtn").addEventListener("click",(e)=>{ if(lastEncoded) copyText(lastEncoded, e.currentTarget); });
+$("#encDlBtn").addEventListener("click",()=>{ if(lastEncoded) download("replaydata.txt", lastEncoded, "text/plain"); });
+$("#toDecodeBtn").addEventListener("click",()=>{
+  if(!lastEncoded) return;
+  $("#input").value = lastEncoded;
+  showTab("decode");
+  decode(null);
+});
+
+setPipe("decode");
 </script>
 </body>
 </html>
